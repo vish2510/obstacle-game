@@ -1,194 +1,132 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Trust Issues Run</title>
+  <meta charset="UTF-8">
+  <title>Trust Issues Prototype</title>
   <style>
-    body {
-      margin: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      background: linear-gradient(to top, #87CEEB, #fff);
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-    }
-
-    canvas {
-      border: 3px solid black;
-      background: #cce6ff;
-    }
-
-    #overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.6);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      color: white;
-      font-size: 2em;
-      display: none;
-    }
-
-    #overlay button {
-      margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 1em;
-      cursor: pointer;
-      border: none;
-      border-radius: 8px;
-    }
+    body { margin:0; background:#111; overflow:hidden; }
+    canvas { display:block; margin:0 auto; background:#222; }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="800" height="400"></canvas>
-  <div id="overlay">
-    <div id="message"></div>
-    <button onclick="restartGame()">Restart</button>
-  </div>
-
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
 
-    const overlay = document.getElementById("overlay");
-    const message = document.getElementById("message");
-
-    // Player sprite
+    // Player
     const player = {
       x: 50,
-      y: 300,
-      width: 48,
-      height: 48,
-      dy: 0,
-      gravity: 0.6,
-      jumpPower: -12,
-      grounded: false,
-      sprite: new Image(),
-      frame: 0,
-      frameCount: 4,
-      frameTimer: 0
+      y: 500,
+      width: 30,
+      height: 40,
+      color: "cyan",
+      velX: 0,
+      velY: 0,
+      speed: 4,
+      jumping: false,
+      grounded: false
     };
-    player.sprite.src = "https://i.ibb.co/ck5Y4dK/run-sprite.png"; // running man sheet
 
-    // Obstacles
-    let obstacles = [];
-    let score = 0;
-    let gameOver = false;
+    const gravity = 0.6;
+    const friction = 0.8;
 
-    function resetGame() {
-      obstacles = [];
-      score = 0;
-      gameOver = false;
-      player.y = 300;
-      player.dy = 0;
-      overlay.style.display = "none";
-    }
+    // Platforms
+    const platforms = [
+      { x: 0, y: 580, width: 800, height: 20 }, // ground
+      { x: 200, y: 450, width: 100, height: 20 },
+      { x: 400, y: 350, width: 120, height: 20 }
+    ];
 
-    function restartGame() {
-      resetGame();
-      requestAnimationFrame(update);
-    }
+    // Moving obstacle
+    const obstacles = [
+      { x: 300, y: 560, width: 40, height: 20, dir: 1 }
+    ];
 
-    function spawnObstacle() {
-      const size = Math.random() * 30 + 20;
-      const type = Math.random() > 0.5 ? "up" : "down";
-      const y = type === "up" ? 350 - size : 200 - size;
-      obstacles.push({ x: 800, y, size, type });
-    }
+    // Goal
+    const goal = { x: 700, y: 300, width: 50, height: 50, color: "lime" };
 
-    function handlePlayer() {
-      player.dy += player.gravity;
-      player.y += player.dy;
+    // Controls
+    const keys = {};
+    document.addEventListener("keydown", e => { keys[e.code] = true; });
+    document.addEventListener("keyup", e => { keys[e.code] = false; });
 
-      if (player.y + player.height > 350) {
-        player.y = 350 - player.height;
-        player.dy = 0;
-        player.grounded = true;
-      } else {
-        player.grounded = false;
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Movement
+      if (keys["ArrowLeft"]) {
+        if (player.velX > -player.speed) player.velX--;
       }
-
-      // animate
-      player.frameTimer++;
-      if (player.frameTimer % 6 === 0) {
-        player.frame = (player.frame + 1) % player.frameCount;
+      if (keys["ArrowRight"]) {
+        if (player.velX < player.speed) player.velX++;
       }
-
-      ctx.drawImage(
-        player.sprite,
-        player.frame * 48, 0, 48, 48,
-        player.x, player.y, player.width, player.height
-      );
-    }
-
-    function handleObstacles() {
-      for (let i = 0; i < obstacles.length; i++) {
-        const obs = obstacles[i];
-        obs.x -= 6 + score / 100; // speed increases with score
-
-        ctx.fillStyle = "black";
-        ctx.fillRect(obs.x, obs.y, obs.size, obs.size);
-
-        if (
-          player.x < obs.x + obs.size &&
-          player.x + player.width > obs.x &&
-          player.y < obs.y + obs.size &&
-          player.y + player.height > obs.y
-        ) {
-          gameOver = true;
+      if (keys["Space"] || keys["ArrowUp"]) {
+        if (!player.jumping && player.grounded) {
+          player.jumping = true;
+          player.grounded = false;
+          player.velY = -12;
         }
       }
 
-      obstacles = obstacles.filter(obs => obs.x + obs.size > 0);
-    }
+      player.velX *= friction;
+      player.velY += gravity;
 
-    function drawScore() {
-      ctx.fillStyle = "black";
-      ctx.font = "20px Arial";
-      ctx.fillText("Score: " + score, 10, 30);
-    }
+      player.x += player.velX;
+      player.y += player.velY;
 
-    let obstacleTimer = 0;
+      player.grounded = false;
 
-    function update() {
-      if (gameOver) {
-        message.textContent = "Game Over! Score: " + score;
-        overlay.style.display = "flex";
-        return;
+      // Draw platforms
+      ctx.fillStyle = "#888";
+      for (let p of platforms) {
+        ctx.fillRect(p.x, p.y, p.width, p.height);
+        if (collisionCheck(player, p)) {
+          player.grounded = true;
+          player.jumping = false;
+          player.y = p.y - player.height;
+          player.velY = 0;
+        }
       }
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Draw moving obstacles
+      ctx.fillStyle = "red";
+      for (let o of obstacles) {
+        ctx.fillRect(o.x, o.y, o.width, o.height);
+        o.x += o.dir * 2;
+        if (o.x <= 100 || o.x + o.width >= 700) o.dir *= -1;
 
-      handlePlayer();
-      handleObstacles();
-      drawScore();
-
-      obstacleTimer++;
-      if (obstacleTimer % 90 === 0) {
-        spawnObstacle();
+        if (collisionCheck(player, o)) {
+          alert("Game Over!");
+          document.location.reload();
+        }
       }
 
-      score++;
+      // Draw goal
+      ctx.fillStyle = goal.color;
+      ctx.fillRect(goal.x, goal.y, goal.width, goal.height);
+      if (collisionCheck(player, goal)) {
+        alert("You Win!");
+        document.location.reload();
+      }
 
-      requestAnimationFrame(update);
+      // Draw player
+      ctx.fillStyle = player.color;
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+
+      requestAnimationFrame(gameLoop);
     }
 
-    document.addEventListener("keydown", (e) => {
-      if (e.code === "Space" && player.grounded) {
-        player.dy = player.jumpPower;
-      }
-    });
+    function collisionCheck(a, b) {
+      return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+      );
+    }
 
-    resetGame();
-    update();
+    gameLoop();
   </script>
 </body>
 </html>
