@@ -1,103 +1,128 @@
-<canvas id="gameCanvas" width="600" height="300"></canvas>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trust Issues Style Game</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #111;
+      overflow: hidden;
+    }
+    canvas {
+      background: #333;
+      border: 2px solid #fff;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="600" height="300"></canvas>
 
-<script>
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
 
-// Load character sprite
-const playerImg = new Image();
-playerImg.src = "https://opengameart.org/sites/default/files/running_man.png"; // placeholder sprite sheet
+    // Load character sprite
+    const playerImg = new Image();
+    playerImg.src = "https://opengameart.org/sites/default/files/running_man.png"; // placeholder sprite sheet
 
-let frame = 0;
-let player = { x: 50, y: 250, width: 40, height: 60, dy: 0, gravity: 0.6, jumpPower: -10, grounded: false };
+    let frame = 0;
+    let player = { x: 50, y: 250, width: 40, height: 60, dy: 0, gravity: 0.6, jumpPower: -10, grounded: false };
 
-let traps = [];
-let score = 0;
-let isGameOver = false;
+    let traps = [];
+    let score = 0;
+    let isGameOver = false;
 
-document.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && player.grounded) {
-    player.dy = player.jumpPower;
-    player.grounded = false;
-  }
-});
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space" && player.grounded) {
+        player.dy = player.jumpPower;
+        player.grounded = false;
+      }
+    });
 
-function spawnTrap() {
-  let type = Math.random();
-  if (type < 0.33) {
-    // Moving spike
-    traps.push({ x: canvas.width, y: 260, width: 30, height: 40, type: "spike", dx: -3, dy: Math.random() > 0.5 ? -2 : 2 });
-  } else if (type < 0.66) {
-    // Falling block
-    traps.push({ x: canvas.width, y: 0, width: 40, height: 40, type: "block", dy: 2 });
-  } else {
-    // Fake floor
-    traps.push({ x: canvas.width, y: 280, width: 80, height: 20, type: "floor", fallAfter: 60 });
-  }
-}
-
-function update() {
-  if (isGameOver) return;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Physics
-  player.y += player.dy;
-  player.dy += player.gravity;
-  if (player.y + player.height >= canvas.height) {
-    player.y = canvas.height - player.height;
-    player.dy = 0;
-    player.grounded = true;
-  }
-
-  // Animate player
-  ctx.drawImage(playerImg, (frame % 6) * 48, 0, 48, 48, player.x, player.y, player.width, player.height);
-  frame++;
-
-  // Traps
-  for (let i = 0; i < traps.length; i++) {
-    let t = traps[i];
-
-    if (t.type === "spike") {
-      t.x += t.dx;
-      t.y += t.dy;
-      if (t.y < 200 || t.y > 260) t.dy *= -1;
-      ctx.fillStyle = "red";
-      ctx.fillRect(t.x, t.y, t.width, t.height);
+    function spawnTrap() {
+      let type = Math.random();
+      if (type < 0.33) {
+        // Moving spike
+        traps.push({ x: canvas.width, y: 260, width: 30, height: 40, type: "spike", dx: -3, dy: Math.random() > 0.5 ? -2 : 2 });
+      } else if (type < 0.66) {
+        // Falling block
+        traps.push({ x: canvas.width, y: 0, width: 40, height: 40, type: "block", dy: 2 });
+      } else {
+        // Fake floor
+        traps.push({ x: canvas.width, y: 280, width: 80, height: 20, type: "floor", fallAfter: 60 });
+      }
     }
 
-    if (t.type === "block") {
-      t.y += t.dy;
-      ctx.fillStyle = "gray";
-      ctx.fillRect(t.x, t.y, t.width, t.height);
+    function update() {
+      if (isGameOver) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Physics
+      player.y += player.dy;
+      player.dy += player.gravity;
+      if (player.y + player.height >= canvas.height) {
+        player.y = canvas.height - player.height;
+        player.dy = 0;
+        player.grounded = true;
+      }
+
+      // Animate player (sprite sheet with 6 frames assumed)
+      ctx.drawImage(playerImg, (frame % 6) * 48, 0, 48, 48, player.x, player.y, player.width, player.height);
+      frame++;
+
+      // Traps
+      for (let i = 0; i < traps.length; i++) {
+        let t = traps[i];
+
+        if (t.type === "spike") {
+          t.x += t.dx;
+          t.y += t.dy;
+          if (t.y < 200 || t.y > 260) t.dy *= -1;
+          ctx.fillStyle = "red";
+          ctx.fillRect(t.x, t.y, t.width, t.height);
+        }
+
+        if (t.type === "block") {
+          t.y += t.dy;
+          ctx.fillStyle = "gray";
+          ctx.fillRect(t.x, t.y, t.width, t.height);
+        }
+
+        if (t.type === "floor") {
+          ctx.fillStyle = "green";
+          ctx.fillRect(t.x, t.y, t.width, t.height);
+          if (t.fallAfter > 0) t.fallAfter--; else t.y += 3;
+        }
+
+        // Collision
+        if (player.x < t.x + t.width &&
+            player.x + player.width > t.x &&
+            player.y < t.y + t.height &&
+            player.y + player.height > t.y) {
+          isGameOver = true;
+          alert("Game Over! Score: " + score);
+          document.location.reload();
+        }
+      }
+
+      traps = traps.filter(t => t.x + t.width > 0 && t.y < canvas.height + 50);
+
+      score++;
+      ctx.fillStyle = "white";
+      ctx.fillText("Score: " + score, 10, 20);
+
+      requestAnimationFrame(update);
     }
 
-    if (t.type === "floor") {
-      ctx.fillStyle = "green";
-      ctx.fillRect(t.x, t.y, t.width, t.height);
-      if (t.fallAfter > 0) t.fallAfter--; else t.y += 3;
-    }
-
-    // Collision
-    if (player.x < t.x + t.width &&
-        player.x + player.width > t.x &&
-        player.y < t.y + t.height &&
-        player.y + player.height > t.y) {
-      isGameOver = true;
-      alert("Game Over! Score: " + score);
-      document.location.reload();
-    }
-  }
-
-  traps = traps.filter(t => t.x + t.width > 0 && t.y < canvas.height + 50);
-
-  score++;
-  ctx.fillStyle = "white";
-  ctx.fillText("Score: " + score, 10, 20);
-
-  requestAnimationFrame(update);
-}
-
-setInterval(spawnTrap, 2000);
-update();
-</script>
+    setInterval(spawnTrap, 2000);
+    update();
+  </script>
+</body>
+</html>
