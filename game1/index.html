@@ -1,132 +1,393 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Trust Issues Prototype</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Trust Issues — Multi-Floor Trap Game</title>
   <style>
-    body { margin:0; background:#111; overflow:hidden; }
-    canvas { display:block; margin:0 auto; background:#222; }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#0b3d91 0%,#3aa0ff 60%,#a6f0ff 100%);font-family:Inter,Arial,Helvetica,sans-serif}
+    #game-wrap{width:920px;margin:20px auto;position:relative}
+    canvas{display:block;background:linear-gradient(#7fc7ff,#dff8ff);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+    #ui{position:absolute;left:18px;top:18px;color:#012;background:rgba(255,255,255,0.85);padding:8px 12px;border-radius:8px;font-weight:600}
+    #overlay{position:absolute;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;flex-direction:column;color:#fff;font-size:20px;gap:12px;display:none;border-radius:12px}
+    button{background:#ffd600;border:none;padding:10px 16px;border-radius:8px;font-weight:700;cursor:pointer}
+    .small{font-size:14px;opacity:.95}
+    #hint{position:absolute;right:18px;top:18px;background:rgba(255,255,255,.85);padding:8px 12px;border-radius:8px;color:#012;font-weight:600}
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="game-wrap">
+    <canvas id="c" width="900" height="700"></canvas>
+    <div id="ui">Deaths: <span id="deaths">0</span> &nbsp; Time: <span id="time">00:00</span> &nbsp; Floor: <span id="floorNo">1</span>/<span id="totalFloors">5</span></div>
+    <div id="hint" class="small">Move: ← →  Jump: Space / ↑  Down to drop floors: ↓</div>
+    <div id="overlay">
+      <div id="overlay-text"></div>
+      <div style="display:flex;gap:10px">
+        <button id="btn-restart">Restart</button>
+        <button id="btn-next" style="display:none">Next Level</button>
+      </div>
+      <div class="small" id="stats"></div>
+    </div>
+  </div>
+
   <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const overlayText = document.getElementById('overlay-text');
+    const btnRestart = document.getElementById('btn-restart');
+    const btnNext = document.getElementById('btn-next');
+    const deathsEl = document.getElementById('deaths');
+    const timeEl = document.getElementById('time');
+    const floorNoEl = document.getElementById('floorNo');
+    const totalFloorsEl = document.getElementById('totalFloors');
+    const statsEl = document.getElementById('stats');
 
-    // Player
-    const player = {
-      x: 50,
-      y: 500,
-      width: 30,
-      height: 40,
-      color: "cyan",
-      velX: 0,
-      velY: 0,
-      speed: 4,
-      jumping: false,
-      grounded: false
-    };
+    const W = canvas.width;
+    const H = canvas.height;
 
-    const gravity = 0.6;
-    const friction = 0.8;
+    let keys = {};
+    addEventListener('keydown', e => keys[e.code] = true);
+    addEventListener('keyup', e => keys[e.code] = false);
 
-    // Platforms
-    const platforms = [
-      { x: 0, y: 580, width: 800, height: 20 }, // ground
-      { x: 200, y: 450, width: 100, height: 20 },
-      { x: 400, y: 350, width: 120, height: 20 }
-    ];
+    function now(){ return performance.now() }
 
-    // Moving obstacle
-    const obstacles = [
-      { x: 300, y: 560, width: 40, height: 20, dir: 1 }
-    ];
-
-    // Goal
-    const goal = { x: 700, y: 300, width: 50, height: 50, color: "lime" };
-
-    // Controls
-    const keys = {};
-    document.addEventListener("keydown", e => { keys[e.code] = true; });
-    document.addEventListener("keyup", e => { keys[e.code] = false; });
-
-    function gameLoop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Movement
-      if (keys["ArrowLeft"]) {
-        if (player.velX > -player.speed) player.velX--;
+    class Player {
+      constructor(x,y){
+        this.x=x; this.y=y; this.r=18;
+        this.vx=0; this.vy=0; this.speed=3.5; this.jumpPower=-12;
+        this.grounded=false; this.color='#00e6ff'; this.faceMood=0;
       }
-      if (keys["ArrowRight"]) {
-        if (player.velX < player.speed) player.velX++;
-      }
-      if (keys["Space"] || keys["ArrowUp"]) {
-        if (!player.jumping && player.grounded) {
-          player.jumping = true;
-          player.grounded = false;
-          player.velY = -12;
+      update(dt, platforms){
+        if(keys['ArrowLeft']) this.vx = Math.max(this.vx - 0.8, -this.speed);
+        if(keys['ArrowRight']) this.vx = Math.min(this.vx + 0.8, this.speed);
+        if(!keys['ArrowLeft'] && !keys['ArrowRight']) this.vx *= 0.82;
+        if((keys['Space'] || keys['ArrowUp']) && this.grounded){
+          this.vy = this.jumpPower; this.grounded = false;
         }
-      }
-
-      player.velX *= friction;
-      player.velY += gravity;
-
-      player.x += player.velX;
-      player.y += player.velY;
-
-      player.grounded = false;
-
-      // Draw platforms
-      ctx.fillStyle = "#888";
-      for (let p of platforms) {
-        ctx.fillRect(p.x, p.y, p.width, p.height);
-        if (collisionCheck(player, p)) {
-          player.grounded = true;
-          player.jumping = false;
-          player.y = p.y - player.height;
-          player.velY = 0;
+        if(keys['ArrowDown'] && this.grounded){
+          this.y += 6; // drop through thin platforms if needed
         }
-      }
+        this.vy += 0.6;
+        this.x += this.vx;
+        this.y += this.vy;
 
-      // Draw moving obstacles
-      ctx.fillStyle = "red";
-      for (let o of obstacles) {
-        ctx.fillRect(o.x, o.y, o.width, o.height);
-        o.x += o.dir * 2;
-        if (o.x <= 100 || o.x + o.width >= 700) o.dir *= -1;
-
-        if (collisionCheck(player, o)) {
-          alert("Game Over!");
-          document.location.reload();
+        if(this.x < this.r) this.x = this.r, this.vx = 0;
+        if(this.x > W - this.r) this.x = W - this.r, this.vx = 0;
+        this.grounded = false;
+        for(let p of platforms){
+          if(p.type === 'thin' && this.vy < 0) continue;
+          if(circleRectCollide(this,p)){
+            if(this.vy > 0 && (this.y - this.r) < p.y + 10){
+              this.y = p.y - this.r;
+              this.vy = 0; this.grounded = true; this.jumped=false;
+              if(p.onStep) p.onStep();
+            } else {
+              if(this.x < p.x) this.x = p.x - this.r;
+              else this.x = p.x + p.width + this.r;
+              this.vx = 0;
+            }
+          }
         }
+
+        if(this.y > H + 200) die('Fell off the world');
       }
-
-      // Draw goal
-      ctx.fillStyle = goal.color;
-      ctx.fillRect(goal.x, goal.y, goal.width, goal.height);
-      if (collisionCheck(player, goal)) {
-        alert("You Win!");
-        document.location.reload();
+      draw(){
+        ctx.save();
+        ctx.translate(this.x,this.y);
+        ctx.beginPath();
+        ctx.fillStyle = this.color;
+        ctx.arc(0,0,this.r,0,Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(-6,-4,3,0,Math.PI*2);
+        ctx.arc(6,-4,3,0,Math.PI*2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const smile = this.faceMood; // -1 sad, 0 flat, 1 smile
+        if(smile >= 1){
+          ctx.arc(0,4,7,0.1*Math.PI,0.9*Math.PI);
+        } else if(smile <= -1){
+          ctx.arc(0,8,7,1.1*Math.PI,1.9*Math.PI);
+        } else {
+          ctx.moveTo(-5,6); ctx.lineTo(5,6);
+        }
+        ctx.stroke();
+        ctx.restore();
       }
-
-      // Draw player
-      ctx.fillStyle = player.color;
-      ctx.fillRect(player.x, player.y, player.width, player.height);
-
-      requestAnimationFrame(gameLoop);
     }
 
-    function collisionCheck(a, b) {
-      return (
-        a.x < b.x + b.width &&
-        a.x + a.width > b.x &&
-        a.y < b.y + b.height &&
-        a.y + a.height > b.y
-      );
+    function circleRectCollide(c, r){
+      const testX = Math.max(r.x, Math.min(c.x, r.x + r.width));
+      const testY = Math.max(r.y, Math.min(c.y, r.y + r.height));
+      const dx = c.x - testX, dy = c.y - testY;
+      return (dx*dx + dy*dy) <= (c.r * c.r);
     }
 
-    gameLoop();
+    function rectRect(a,b){
+      return !(a.x + a.width < b.x || a.x > b.x + b.width || a.y + a.height < b.y || a.y > b.y + b.height);
+    }
+
+    function rand(min,max){ return Math.random()*(max-min)+min }
+
+    let floors = [];
+    let totalFloors = 5;
+    totalFloorsEl.textContent = totalFloors;
+
+    function makeLevel(floorCount){
+      floors = [];
+      for(let i=0;i<floorCount;i++){
+        const ybase = 100 + i*110;
+        const platforms = [];
+        const obstacles = [];
+        const floorWidth = W;
+        platforms.push({x:20,y:ybase+70,width:floorWidth-40,height:16,type:'solid'});
+        const holes = Math.floor(rand(1,3));
+        for(let h=0; h<holes; h++){
+          const px = rand(60, W-160);
+          const pw = rand(60, 140);
+          platforms.push({x:px,y:ybase+20,width:pw,height:12,type:'thin',onStep:null});
+        }
+        platforms.push({x:60,y:ybase+50,width:120,height:14,type:'solid'});
+        platforms.push({x:W-180,y:ybase+50,width:120,height:14,type:'solid'});
+        if(Math.random()>.5){
+          platforms.push({x:rand(160, W-260), y:ybase+10, width:rand(80,140), height:12, type:'disappear', fallen:false, onStep:function(){ this._t = 60 }});
+        }
+        for(let o=0;o<Math.floor(rand(1,3)); o++){
+          const type = Math.random();
+          if(type < 0.33){
+            obstacles.push({kind:'slider', x:rand(120,W-160), y:ybase+40, w:40, h:18, range:rand(60,210), speed:rand(1.5,3), dir: Math.random()>0.5?1:-1});
+          } else if(type < 0.66){
+            obstacles.push({kind:'resizer', x:rand(120,W-160), y:ybase+25, w:40, h:18, baseW:40, pulse:0, speed:rand(2,4)});
+          } else {
+            obstacles.push({kind:'swing', cx:rand(200,W-200), cy:ybase+10, len:40, angle:rand(0,Math.PI), speed:rand(0.04,0.12), amp:rand(24,70)});
+          }
+        }
+        const fakeGoal = Math.random() < 0.25 ? {x:rand(80,W-140), y:ybase+20, w:36, h:26, fake:true, alive:true} : null;
+        floors.push({ybase, platforms, obstacles, fakeGoal});
+      }
+      const finalGoal = {x:W/2-36, y: 100 + (floorCount)*110 - 40, w:72, h:36};
+      return finalGoal;
+    }
+
+    let finalGoal;
+    let player;
+    let deathCount = 0;
+    let startTime = now();
+    let running = true;
+    let currentFloorIndex = 0;
+
+    function init(){
+      finalGoal = makeLevel(totalFloors);
+      player = new Player(W/2, 60);
+      deathCount = 0; deathsEl.textContent = deathCount;
+      startTime = now();
+      currentFloorIndex = 0;
+      updateFloorUI();
+      overlay.style.display = 'none';
+      running = true;
+      last = now();
+    }
+
+    function updateFloorUI(){
+      floorNoEl.textContent = Math.min(currentFloorIndex+1, totalFloors);
+    }
+
+    function die(msg){
+      deathCount++;
+      deathsEl.textContent = deathCount;
+      running = false;
+      overlayText.textContent = 'You Died - ' + (msg||'Hit a trap');
+      btnNext.style.display = 'none';
+      overlay.style.display = 'flex';
+      const elapsed = Math.floor((now()-startTime)/1000);
+      statsEl.textContent = `Time: ${formatTime(elapsed)}  •  Deaths: ${deathCount}`;
+    }
+
+    function win(){
+      running = false;
+      overlayText.textContent = 'You Reached the End! Well done 🎉';
+      btnNext.style.display = 'none';
+      overlay.style.display = 'flex';
+      const elapsed = Math.floor((now()-startTime)/1000);
+      statsEl.textContent = `Time: ${formatTime(elapsed)}  •  Deaths: ${deathCount}`;
+    }
+
+    btnRestart.onclick = () => { init(); }
+    btnNext.onclick = () => { init(); }
+
+    function formatTime(s){ const mm = String(Math.floor(s/60)).padStart(2,'0'); const ss = String(s%60).padStart(2,'0'); return `${mm}:${ss}` }
+
+    function drawBackground(t){
+      const grd = ctx.createLinearGradient(0,0,0,H);
+      grd.addColorStop(0, '#bfe9ff');
+      grd.addColorStop(1, '#eaffff');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      for(let i=0;i<6;i++){
+        ctx.beginPath();
+        const x = (t*0.02 + i*160) % (W+300) - 150;
+        ctx.ellipse(x, 80 + i*40, 160, 40 + (i%2)*20, 0, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#e0f7ff';
+      ctx.fillRect(0,H-60,W,60);
+      ctx.fillStyle = '#ffd6a5';
+      ctx.fillRect(0,H-60,W,6);
+    }
+
+    function drawPlatform(p){
+      ctx.fillStyle = p.type === 'disappear' ? '#9b59b6' : (p.type === 'thin' ? '#7f8c8d' : '#2d3a4a');
+      ctx.fillRect(p.x, p.y, p.width, p.height);
+      if(p.type === 'disappear'){
+        const t = Math.max(0, p._t||0);
+        if(t>0){
+          ctx.fillStyle = 'rgba(0,0,0,0.12)';
+          ctx.fillRect(p.x, p.y, p.width, p.height * (t/60));
+        }
+      }
+    }
+
+    function update(dt){
+      if(!running) return;
+      const t = now()*0.001;
+      drawBackground(t);
+      const floorCount = floors.length;
+      for(let i=0;i<floorCount;i++){
+        const f = floors[i];
+        for(let p of f.platforms){
+          if(p.type === 'thin'){
+            if(!p.width) continue;
+            ctx.fillStyle = '#bfbfbf';
+            ctx.fillRect(p.x,p.y,p.width,p.height);
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+            ctx.strokeRect(p.x,p.y,p.width,p.height);
+          } else {
+            drawPlatform(p);
+          }
+        }
+        for(let ob of f.obstacles){
+          if(ob.kind === 'slider'){
+            ob.x += ob.speed * ob.dir;
+            if(ob.x < ob._min || ob.x > ob._max){
+              if(!ob._min) { ob._min = ob.x - ob.range; ob._max = ob.x + ob.range; }
+              ob.dir *= -1;
+            }
+            ctx.fillStyle = '#b71c1c';
+            ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+            if(constRectCircleCollision({x:ob.x,y:ob.y,width:ob.w,height:ob.h}, player)) die('Crushed by moving block');
+          } else if(ob.kind === 'resizer'){
+            const dist = Math.hypot(player.x - ob.x, player.y - ob.y);
+            const near = dist < 140;
+            ob.pulse += dt * ob.speed * (near?2:0.6);
+            const ww = ob.baseW + Math.sin(ob.pulse) * (near?26:10);
+            ob.w = Math.max(18, ww);
+            ctx.fillStyle = '#d35400';
+            ctx.fillRect(ob.x - ob.w/2, ob.y, ob.w, ob.h);
+            if(circleRectCollide(player, {x: ob.x - ob.w/2, y: ob.y, width: ob.w, height: ob.h})) die('Smashed by changing wall');
+          } else if(ob.kind === 'swing'){
+            ob.angle += ob.speed * dt * 60;
+            const bx = ob.cx + Math.cos(ob.angle) * ob.amp;
+            const by = ob.cy + Math.sin(ob.angle) * (ob.amp*0.25);
+            ctx.save();
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(ob.cx, ob.cy - 10);
+            ctx.lineTo(bx, by);
+            ctx.stroke();
+            ctx.fillStyle = '#111';
+            ctx.fillRect(bx-8, by, 16, 12);
+            ctx.restore();
+            if(circleRectCollide(player, {x:bx-8,y:by,width:16,height:12})) die('Hit by swinging hazard');
+          }
+        }
+        if(f.fakeGoal){
+          if(f.fakeGoal.alive){
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect(f.fakeGoal.x, f.fakeGoal.y, f.fakeGoal.w, f.fakeGoal.h);
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Arial';
+            ctx.fillText('Goal?', f.fakeGoal.x+6, f.fakeGoal.y+18);
+            if(rectRect({x:f.fakeGoal.x,y:f.fakeGoal.y,width:f.fakeGoal.w,height:f.fakeGoal.h},{x:player.x-player.r,y:player.y-player.r,width:player.r*2,height:player.r*2})){
+              if(Math.random() < 0.5){
+                f.fakeGoal.alive = false;
+                die('Fake goal betrayed you');
+              } else {
+                f.fakeGoal.alive = false;
+                ctx.fillStyle = '#fffb';
+                ctx.fillRect(f.fakeGoal.x-6, f.fakeGoal.y-6, f.fakeGoal.w+12, f.fakeGoal.h+12);
+              }
+            }
+          } else {
+            ctx.fillStyle = 'rgba(255,0,0,0.12)';
+            ctx.fillRect(f.fakeGoal.x, f.fakeGoal.y, f.fakeGoal.w, f.fakeGoal.h);
+          }
+        }
+      }
+
+      const allPlatforms = floors.flatMap(f => f.platforms);
+      player.update(dt, allPlatforms);
+      player.draw();
+
+      ctx.fillStyle = '#111';
+      ctx.font = '18px Inter,Arial';
+      ctx.fillText('Proceed to the bottom green platform', 22, 28);
+
+      const goalRect = {x: finalGoal.x, y: finalGoal.y, width: finalGoal.w, height: finalGoal.h};
+      ctx.fillStyle = '#2ecc71';
+      ctx.fillRect(goalRect.x, goalRect.y, goalRect.width, goalRect.height);
+      ctx.fillStyle = '#013';
+      ctx.font = '18px Inter,Arial';
+      ctx.fillText('END', goalRect.x + 18, goalRect.y + 24);
+
+      for(let f of floors){
+        for(let p of f.platforms){
+          if(p.type === 'disappear'){
+            p._t = Math.max(0, (p._t||0) - 1);
+            if((p._t||0) > 0) {
+            } else if(p.fallen){
+              p.width = 0;
+            } else if(p._t === 0 && !p.fallen){
+              p.fallen = true;
+              setTimeout(()=> p.width = 0, 250);
+            }
+          }
+        }
+      }
+
+      if(circleRectCollide(player, {x:goalRect.x,y:goalRect.y,width:goalRect.width,height:goalRect.height})){
+        win();
+      }
+
+      const elapsed = Math.floor((now()-startTime)/1000);
+      timeEl.textContent = formatTime(elapsed);
+    }
+
+    function constRectCircleCollision(r, c){
+      const testX = Math.max(r.x, Math.min(c.x, r.x + r.width));
+      const testY = Math.max(r.y, Math.min(c.y, r.y + r.height));
+      const dx = c.x - testX, dy = c.y - testY;
+      return (dx*dx + dy*dy) <= (c.r * c.r);
+    }
+
+    let last = now();
+    function loop(){
+      const t = now();
+      const dt = (t - last) / 16.666;
+      last = t;
+      if(running) update(dt);
+      requestAnimationFrame(loop);
+    }
+
+    init();
+    loop();
   </script>
 </body>
 </html>
