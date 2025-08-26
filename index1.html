@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini Obstacle Game</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #222;
+      overflow: hidden;
+    }
+    canvas {
+      background: #333;
+      border: 2px solid #fff;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="500" height="300"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let player = { x: 50, y: 250, width: 20, height: 20, dy: 0, gravity: 0.6, jumpPower: -10, grounded: false };
+    let obstacles = [];
+    let gameSpeed = 3;
+    let score = 0;
+    let isGameOver = false;
+
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space" && player.grounded) {
+        player.dy = player.jumpPower;
+        player.grounded = false;
+      }
+    });
+
+    function spawnObstacle() {
+      let height = Math.random() * 40 + 20;
+      obstacles.push({ x: canvas.width, y: canvas.height - height, width: 20, height: height });
+    }
+
+    function update() {
+      if (isGameOver) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Player physics
+      player.y += player.dy;
+      player.dy += player.gravity;
+
+      if (player.y + player.height >= canvas.height) {
+        player.y = canvas.height - player.height;
+        player.dy = 0;
+        player.grounded = true;
+      }
+
+      // Draw player
+      ctx.fillStyle = "cyan";
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+
+      // Update obstacles
+      for (let i = 0; i < obstacles.length; i++) {
+        let obs = obstacles[i];
+        obs.x -= gameSpeed;
+        ctx.fillStyle = "red";
+        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+
+        // Collision check
+        if (player.x < obs.x + obs.width &&
+            player.x + player.width > obs.x &&
+            player.y < obs.y + obs.height &&
+            player.y + player.height > obs.y) {
+          isGameOver = true;
+          alert("Game Over! Score: " + score);
+          document.location.reload();
+        }
+      }
+
+      // Remove offscreen obstacles
+      obstacles = obstacles.filter(obs => obs.x + obs.width > 0);
+
+      // Score
+      score++;
+      ctx.fillStyle = "white";
+      ctx.font = "16px Arial";
+      ctx.fillText("Score: " + score, 10, 20);
+
+      requestAnimationFrame(update);
+    }
+
+    // Spawn obstacles every 2 seconds
+    setInterval(spawnObstacle, 2000);
+    update();
+  </script>
+</body>
+</html>
